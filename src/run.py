@@ -5,7 +5,7 @@ from antlr4 import *
 
 for path in ['./test/','./main/bkool/parser/','./main/bkool/utils/','./main/bkool/astgen/','./main/bkool/checker/','./main/bkool/codegen/']:
 	sys.path.append(path)
-ANTLR_JAR = os.environ.get('ANTLR_JAR')
+ANTLR_JAR = './antlr-4.9.2-complete.jar'
 TARGET_DIR = '../target'
 GENERATE_DIR = 'main/bkool/parser'
 
