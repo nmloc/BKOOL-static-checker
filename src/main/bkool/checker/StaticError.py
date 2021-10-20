@@ -101,6 +101,5 @@ class IllegalArrayLiteral(StaticError):
 @dataclass
 class IllegalMemberAccess(StaticError):
     expr:Expr
-    del __str__(self):
+    def __str__(self):
         return "Illegal Member Access: " + str(self.expr)
-
