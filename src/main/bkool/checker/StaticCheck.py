@@ -46,63 +46,66 @@ class StaticChecker(BaseVisitor,Utils):
         self.ast = ast
     
     def check(self):
-        return self.visit(self.ast,StaticChecker.global_envi)
+        return self.ast.accept(self,StaticChecker.global_envi)
     
-    def visitProgram(self, ast, param):
-        return [self.visit(x,param) for x in ast.decl]
+    def visitProgram(self, ast: Program, param):
+        globalEnv = [param]
+        list(map(lambda x: x.accept(self,globalEnv),ast.decl))
     
-    def visitVarDecl(self, ast, param):
-        return None
+    def visitVarDecl(self, ast: VarDecl, param):
+        print(ast)
     
     def visitConstDecl(self, ast, param):
-        return None
+        print(ast)
     
     def visitClassDecl(self, ast, param):
-        return None
+        print(ast)
     
     def visitStatic(self, ast, param):
-        return None
+        print(ast)
     
     def visitInstance(self, ast, param):
-        return None
+        print(ast)
     
     def visitMethodDecl(self, ast, param):
+        print(ast)
         return list(map(lambda x: self.visit(x,(param,True)),ast.body.stmt))
     
     def visitAttributeDecl(self, ast, param):
-        return None
+        print(ast)
     
     def visitIntType(self, ast, param):
-        return None
+        print(ast)
     
     def visitFloatType(self, ast, param):
-        return None
+        print(ast)
     
     def visitBoolType(self, ast, param):
-        return None
+        print(ast)
     
     def visitStringType(self, ast, param):
-        return None
+        print(ast)
     
     def visitVoidType(self, ast, param):
-        return None
+        print(ast)
     
     def visitArrayType(self, ast, param):
-        return None
+        print(ast)
     
     def visitClassType(self, ast, param):
-        return None
+        print(ast)
     
     def visitBinaryOp(self, ast, param):
-        return None
+        print(ast)
     
     def visitUnaryOp(self, ast, param):
-        return None
+        print(ast)
     
     def visitCallExpr(self, ast, param): 
         at = [self.visit(x,(param[0],False)) for x in ast.param]
         
         res = self.lookup(ast.method.name,param[0],lambda x: x.name)
+        print(ast)
         if res is None or not type(res.mtype) is MType:
             raise Undeclared(Function(),ast.method.name)
         elif len(res.mtype.partype) != len(at):
@@ -114,40 +117,42 @@ class StaticChecker(BaseVisitor,Utils):
             return res.mtype.rettype
     
     def visitNewExpr(self, ast, param):
-        return None
+        print(ast)
     
     def visitId(self, ast, param):
-        return None
+        print(ast)
     
     def visitArrayCell(self, ast, param):
-        return None
+        print(ast)
     
     def visitFieldAccess(self, ast, param):
-        return None
+        print(ast)
     
     def visitBlock(self, ast, param):
-        return None
+        print(ast)
     
     def visitIf(self, ast, param):
-        return None
+        print(ast)
     
-    def visitFor(self, ast, param):
-        return None
+    def visitFor(self, ast: For, param):
+        print(ast)
     
     def visitContinue(self, ast, param):
-        return None
+        print(ast)
+        return (ast, Continue())
     
     def visitBreak(self, ast, param):
-        return None
+        print(ast)
+        return (ast, Break())
     
     def visitReturn(self, ast, param):
-        return None
+        print(ast)
     
     def visitAssign(self, ast, param):
-        return None
+        print(ast)
     
     def visitCallStmt(self, ast, param):
-        return None
+        print(ast)
     
     def visitIntLiteral(self, ast, param):
         return IntType()
