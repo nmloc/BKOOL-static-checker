@@ -46,131 +46,152 @@ class StaticChecker(BaseVisitor,Utils):
         self.ast = ast
     
     def check(self):
-        return self.ast.accept(self,StaticChecker.global_envi)
+        return self.ast.accept(self, StaticChecker.global_envi)
     
-    def visitProgram(self, ast: Program, param):
-        globalEnv = [param]
-        list(map(lambda x: x.accept(self,globalEnv),ast.decl))
+    def visitProgram(self, ast: Program, c):
+        globalEnv = [c]
+        list(map(lambda x: x.accept(self, globalEnv), ast.decl))
     
-    def visitVarDecl(self, ast: VarDecl, param):
-        print(ast)
-    
-    def visitConstDecl(self, ast, param):
-        print(ast)
-    
-    def visitClassDecl(self, ast, param):
-        print(ast)
-    
-    def visitStatic(self, ast, param):
-        print(ast)
-    
-    def visitInstance(self, ast, param):
-        print(ast)
-    
-    def visitMethodDecl(self, ast, param):
-        print(ast)
-        return list(map(lambda x: self.visit(x,(param,True)),ast.body.stmt))
-    
-    def visitAttributeDecl(self, ast, param):
-        print(ast)
-    
-    def visitIntType(self, ast, param):
-        print(ast)
-    
-    def visitFloatType(self, ast, param):
-        print(ast)
-    
-    def visitBoolType(self, ast, param):
-        print(ast)
-    
-    def visitStringType(self, ast, param):
-        print(ast)
-    
-    def visitVoidType(self, ast, param):
-        print(ast)
-    
-    def visitArrayType(self, ast, param):
-        print(ast)
-    
-    def visitClassType(self, ast, param):
-        print(ast)
-    
-    def visitBinaryOp(self, ast, param):
-        print(ast)
-    
-    def visitUnaryOp(self, ast, param):
-        print(ast)
-    
-    def visitCallExpr(self, ast, param): 
-        at = [self.visit(x,(param[0],False)) for x in ast.param]
+    def visitVarDecl(self, ast: VarDecl, c):
+        variable = ast.variable.accept(self, c)
+        varType = ast.varType.accept(self, c)
+        varInit = ast.varInit.accept(self, c) if ast.varInit else None
         
-        res = self.lookup(ast.method.name,param[0],lambda x: x.name)
+        raise Redeclared(Variable(), str(variable))
+    
+    def visitConstDecl(self, ast: ConstDecl, c):
+        constant = ast.constant.accept(self, c)
+        constType = ast.constType.accept(self, c)
+        value = ast.value.accept(self, c)
+
+        raise Redeclared(Constant(), str(constant))
+        raise IllegalConstantExpression(value)
+    
+    def visitClassDecl(self, ast: ClassDecl, c):
+        classname = ast.classname.accept(self, c)
+        memlist = ast.memlist
+        parentname = ast.parentname.accept(self, c) if ast.parentname else None
+
+        raise Redeclared(Class(), str(classname))
+        raise Undeclared(Class(), str(classname))
+    
+    def visitStatic(self, ast: Static, c):
+        return None
+    
+    def visitInstance(self, ast: Instance, c):
+        return None
+    
+    def visitMethodDecl(self, ast: MethodDecl, c):
+        kind = ast.kind.accept(self, c)
+        name = ast.name.accept(self, c)
+        param = ast.param.accept(self, c)
+        returnType = ast.returnType.accept(self, c)
+        body = ast.body.accept(self, c)
+
+        return list(map(lambda x: x.accept(self, c), ast.body.stmt))
+        raise Redeclared(Method(), str(name))
+    
+    def visitAttributeDecl(self, ast: AttributeDecl, c):
+        kind = ast.kind.accept(self, c)
+        decl = ast.decl.accept(self, c)
+
+        raise Redeclared(Attribute(), str())
+        raise Undeclared(Attribute(), str())
+    
+    def visitIntType(self, ast: IntType, c):
         print(ast)
+    
+    def visitFloatType(self, ast: FloatType, c):
+        print(ast)
+    
+    def visitBoolType(self, ast: BoolType, c):
+        print(ast)
+    
+    def visitStringType(self, ast: StringType, c):
+        print(ast)
+    
+    def visitVoidType(self, ast: VoidType, c):
+        print(ast)
+    
+    def visitArrayType(self, ast: ArrayType, c):
+        print(ast)
+    
+    def visitClassType(self, ast: ClassType, c):
+        print(ast)
+    
+    def visitBinaryOp(self, ast: BinaryOp, c):
+        print(ast)
+    
+    def visitUnaryOp(self, ast: UnaryOp, c):
+        print(ast)
+    
+    def visitCallExpr(self, ast: CallExpr, c): 
+        at = [self.visit(x,(c[0],False)) for x in ast.c]
+        
+        res = self.lookup(ast.method.name,c[0],lambda x: x.name)
         if res is None or not type(res.mtype) is MType:
             raise Undeclared(Function(),ast.method.name)
         elif len(res.mtype.partype) != len(at):
-            if param[1]:
+            if c[1]:
                 raise TypeMismatchInStatement(ast)
             else:
                 raise TypeMismatchInExpression(ast)
         else:
             return res.mtype.rettype
     
-    def visitNewExpr(self, ast, param):
+    def visitNewExpr(self, ast: NewExpr, c):
         print(ast)
     
-    def visitId(self, ast, param):
+    def visitId(self, ast: Id, c):
         print(ast)
     
-    def visitArrayCell(self, ast, param):
+    def visitArrayCell(self, ast: ArrayCell, c):
         print(ast)
     
-    def visitFieldAccess(self, ast, param):
+    def visitFieldAccess(self, ast: FieldAccess, c):
         print(ast)
     
-    def visitBlock(self, ast, param):
+    def visitBlock(self, ast: Block, c):
+        pass
+    
+    def visitIf(self, ast: If, c):
         print(ast)
     
-    def visitIf(self, ast, param):
+    def visitFor(self, ast: For, c):
         print(ast)
     
-    def visitFor(self, ast: For, param):
-        print(ast)
-    
-    def visitContinue(self, ast, param):
-        print(ast)
+    def visitContinue(self, ast: Continue, c):
         return (ast, Continue())
     
-    def visitBreak(self, ast, param):
-        print(ast)
+    def visitBreak(self, ast: Break, c):
         return (ast, Break())
     
-    def visitReturn(self, ast, param):
+    def visitReturn(self, ast: Return, c):
         print(ast)
     
-    def visitAssign(self, ast, param):
+    def visitAssign(self, ast: Assign, c):
         print(ast)
     
-    def visitCallStmt(self, ast, param):
+    def visitCallStmt(self, ast: CallStmt, c):
         print(ast)
     
-    def visitIntLiteral(self, ast, param):
+    def visitIntLiteral(self, ast: IntLiteral, c):
         return IntType()
     
-    def visitFloatLiteral(self, ast, param):
+    def visitFloatLiteral(self, ast: FloatLiteral, c):
         return FloatType()
     
-    def visitBooleanLiteral(self, ast, param):
+    def visitBooleanLiteral(self, ast: BooleanLiteral, c):
         return BoolType()
     
-    def visitStringLiteral(self, ast, param):
+    def visitStringLiteral(self, ast: StringLiteral, c):
         return StringType()
     
-    def visitNullLiteral(self, ast, param):
+    def visitNullLiteral(self, ast: NullLiteral, c):
         return None
     
-    def visitSelfLiteral(self, ast, param):
+    def visitSelfLiteral(self, ast: SelfLiteral, c):
         return None
 
-    def visitArrayLiteral(self, ast, param):
+    def visitArrayLiteral(self, ast: ArrayLiteral, c):
         return ArrayType() 
