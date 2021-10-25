@@ -4,14 +4,11 @@
  * Student's name: Nguyen Minh Loc
  * Student's ID: 1852554
 """
-# from AST import * 
-# from Visitor import *
-# from Utils import Utils
+from AST import * 
+from Visitor import *
+# from main.bkool.utils.AST import * 
+# from main.bkool.utils.Visitor import *
 from StaticError import *
-
-from main.bkool.utils.AST import * 
-from main.bkool.utils.Visitor import *
-from main.bkool.utils.Utils import Utils
 
 class MType: #type of method declaration
     def __init__(self,partype,rettype):
@@ -24,7 +21,7 @@ class Symbol:
         self.mtype = mtype
         self.value = value
 
-class StaticChecker(BaseVisitor,Utils):
+class StaticChecker(BaseVisitor):
 
     global_envi = [
         Symbol("getInt", MType([], IntType())),
@@ -49,37 +46,93 @@ class StaticChecker(BaseVisitor,Utils):
         return self.ast.accept(self, StaticChecker.global_envi)
     
     def visitProgram(self, ast: Program, c):
-        globalEnv = [c]
-        list(map(lambda x: x.accept(self, globalEnv), ast.decl))
+        programEnvi = [c]
+        list(map(lambda x: x.accept(self, programEnvi), ast.decl))
+
+    def lookupVar(self, variable, envi):
+        for index, element in enumerate(envi):
+            if element:
+                if index > 0:
+                    if (element["name"] == variable):
+                        return True, element["type"]
+                else:
+                    for x in element:
+                        if isinstance(x, dict) and x == variable:
+                            return True, x["type"]
+        return False, None
+
+    def checkType(self, varType, varInit):
+        if varInit == varType:
+            return True, 'Literal'
+        else:
+            if varInit not in ['int', 'float', 'string', 'boolean']:
+                return False, 'Id_Or_Op'
+        return False, 'Literal'
     
     def visitVarDecl(self, ast: VarDecl, c):
         variable = ast.variable.accept(self, c)
         varType = ast.varType.accept(self, c)
         varInit = ast.varInit.accept(self, c) if ast.varInit else None
-        
-        raise Redeclared(Variable(), str(variable))
+
+        if (not self.lookupVar(variable, c)[0]):
+            return {'type': varType, 'name': variable}
+        else:
+            raise Redeclared(Variable(), variable)
     
     def visitConstDecl(self, ast: ConstDecl, c):
         constant = ast.constant.accept(self, c)
         constType = ast.constType.accept(self, c)
         value = ast.value.accept(self, c)
 
-        raise Redeclared(Constant(), str(constant))
-        raise IllegalConstantExpression(value)
+        if not self.checkType(constType, value)[0]: 
+            if self.checkType(constType, value)[1] == 'Literal':
+                raise TypeMismatchInConstant(ast)
+            else:
+                raise IllegalConstantExpression(ast.value)
+        if (not self.lookupVar(constant, c)[0]):
+            return {'type': constType, 'name': constant}
+        else:
+            raise Redeclared(Constant(), constant)
+
+    def lookupClass(self, classname, envi):
+        if len(envi) > 1:
+            for index, element in enumerate(envi):
+                if index > 0 and element:
+                    if element["class"] == classname:
+                        return True, index
+        return False, None
+    
+    def referenceClass(self, classname, parentname, envi):
+        child = self.lookupClass(classname, envi)
+        parent = self.lookupClass(parentname, envi)
+        if child[0]:
+            raise Redeclared(Class(), classname)
+        if parentname != None:
+            if not parent[0]:
+                raise Undeclared(Class(), parentname)
+            else:
+                return envi[parent[1]]["local"]
+        return []
     
     def visitClassDecl(self, ast: ClassDecl, c):
         classname = ast.classname.accept(self, c)
-        memlist = ast.memlist
         parentname = ast.parentname.accept(self, c) if ast.parentname else None
+        localVar = [c[0]]
 
-        raise Redeclared(Class(), str(classname))
-        raise Undeclared(Class(), str(classname))
+        localVar += self.referenceClass(classname, parentname, c)
+        for mem in ast.memlist:
+            if mem.__class__.__name__ == "AttributeDecl":
+                localVar.append(mem.accept(self, localVar))
+        for mem in ast.memlist:
+            if mem.__class__.__name__ == "MethodDecl":
+                mem.accept(self, localVar)
+        c.append({"class": classname, "local": localVar[1:]}) #append bi cc gi roi
     
     def visitStatic(self, ast: Static, c):
-        return None
+        return "static"
     
     def visitInstance(self, ast: Instance, c):
-        return None
+        return "instance"
     
     def visitMethodDecl(self, ast: MethodDecl, c):
         kind = ast.kind.accept(self, c)
@@ -89,41 +142,46 @@ class StaticChecker(BaseVisitor,Utils):
         body = ast.body.accept(self, c)
 
         return list(map(lambda x: x.accept(self, c), ast.body.stmt))
-        raise Redeclared(Method(), str(name))
+        #raise Redeclared(Method(), str(name))
     
     def visitAttributeDecl(self, ast: AttributeDecl, c):
         kind = ast.kind.accept(self, c)
         decl = ast.decl.accept(self, c)
+        attributeName = ast.decl.variable.name if (ast.decl.__class__.__name__ == "VarDecl") else ast.decl.constant.name
 
-        raise Redeclared(Attribute(), str())
-        raise Undeclared(Attribute(), str())
+        #raise Undeclared(Attribute(), str())
+        if self.lookupVar(attributeName, c)[0]:
+            raise Redeclared(Attribute(), attributeName)
+        else:
+            decl = ast.decl.accept(self, c)
+            return decl
     
     def visitIntType(self, ast: IntType, c):
-        print(ast)
+        return "int"
     
     def visitFloatType(self, ast: FloatType, c):
-        print(ast)
+        return "float"
     
     def visitBoolType(self, ast: BoolType, c):
-        print(ast)
+        return "bool"
     
     def visitStringType(self, ast: StringType, c):
-        print(ast)
+        return "string"
     
     def visitVoidType(self, ast: VoidType, c):
-        print(ast)
+        return "void"
     
     def visitArrayType(self, ast: ArrayType, c):
-        print(ast)
+        return "array"
     
     def visitClassType(self, ast: ClassType, c):
-        print(ast)
+        return "class"
     
     def visitBinaryOp(self, ast: BinaryOp, c):
-        print(ast)
+        pass
     
     def visitUnaryOp(self, ast: UnaryOp, c):
-        print(ast)
+        pass
     
     def visitCallExpr(self, ast: CallExpr, c): 
         at = [self.visit(x,(c[0],False)) for x in ast.c]
@@ -140,40 +198,45 @@ class StaticChecker(BaseVisitor,Utils):
             return res.mtype.rettype
     
     def visitNewExpr(self, ast: NewExpr, c):
-        print(ast)
-    
-    def visitId(self, ast: Id, c):
-        print(ast)
-    
-    def visitArrayCell(self, ast: ArrayCell, c):
-        print(ast)
-    
-    def visitFieldAccess(self, ast: FieldAccess, c):
-        print(ast)
-    
-    def visitBlock(self, ast: Block, c):
         pass
     
+    def visitId(self, ast: Id, c):
+        return ast.name
+    
+    def visitArrayCell(self, ast: ArrayCell, c):
+        pass
+    
+    def visitFieldAccess(self, ast: FieldAccess, c):
+        pass
+    
+    def visitBlock(self, ast: Block, c):
+        for decl in ast.decl:
+            decl.accept(self, c)
+        for stmt in ast.stmt:
+            stmt.accept(self, c)
+    
     def visitIf(self, ast: If, c):
-        print(ast)
+        pass
     
     def visitFor(self, ast: For, c):
-        print(ast)
+        pass
     
     def visitContinue(self, ast: Continue, c):
         return (ast, Continue())
+        # raise MustInLoop(Continue())
     
     def visitBreak(self, ast: Break, c):
         return (ast, Break())
+        # raise MustInLoop(Break())
     
     def visitReturn(self, ast: Return, c):
-        print(ast)
+        pass
     
     def visitAssign(self, ast: Assign, c):
-        print(ast)
+        pass
     
     def visitCallStmt(self, ast: CallStmt, c):
-        print(ast)
+        pass
     
     def visitIntLiteral(self, ast: IntLiteral, c):
         return IntType()
@@ -188,10 +251,18 @@ class StaticChecker(BaseVisitor,Utils):
         return StringType()
     
     def visitNullLiteral(self, ast: NullLiteral, c):
-        return None
+        return NullLiteral()
     
     def visitSelfLiteral(self, ast: SelfLiteral, c):
-        return None
+        return SelfLiteral()
+
+    def checkTypeArrayLiteral(self, arr, envi):
+        list = [x.accept(self, envi) for x in arr]
+        res = all(map(lambda x: x == list[0], list))
+        return res, list[0]
 
     def visitArrayLiteral(self, ast: ArrayLiteral, c):
-        return ArrayType() 
+        res = self.checkTypeArrayLiteral(ast.value, c)
+        if (not res[0]):
+            raise IllegalArrayLiteral(ast)
+        return res[1]
