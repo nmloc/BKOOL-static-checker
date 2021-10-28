@@ -4,24 +4,27 @@
  * Student's name: Nguyen Minh Loc
  * Student's ID: 1852554
 """
+from _typeshed import IdentityFunction
 from AST import * 
 from Visitor import *
 
-from main.bkool.utils.AST import * 
-from main.bkool.utils.Visitor import *
+# from main.bkool.utils.AST import * 
+# from main.bkool.utils.Visitor import *
 
 from StaticError import *
 
-class MType: #type of method declaration
-    def __init__(self,partype,rettype):
-        self.partype = partype #param type
-        self.rettype = rettype #return type
+class MType:
+    def __init__(self, partype, rettype):
+        self.partype = partype
+        self.rettype = rettype
+
 
 class Symbol:
-    def __init__(self,name,mtype,value = None):
+    def __init__(self, name, mtype, value=None):
         self.name = name
         self.mtype = mtype
         self.value = value
+
 
 class Stack:
     def __init__(self):
@@ -47,328 +50,570 @@ class Stack:
         except IndexError:
             return False
 
+
 class StaticChecker(BaseVisitor, Stack):
 
     global_envi = [
-        Symbol("getInt", MType([], IntType())),
-        Symbol("putInt", MType([IntType()], VoidType())),
-        Symbol("putIntLn", MType([IntType()], VoidType())),
-        Symbol("getFloat", MType([], FloatType())),
-        Symbol("putFloat", MType([FloatType()], VoidType())),
-        Symbol("putFloatLn", MType([FloatType()], VoidType())),
-        Symbol("getBool", MType([], BoolType())),
-        Symbol("putBool", MType([BoolType()], VoidType())),
-        Symbol("putBoolLn", MType([BoolType()], VoidType())),
-        Symbol("getStr", MType([], StringType())),
-        Symbol("putStr", MType([StringType()], VoidType())),
-        Symbol("putStrLn", MType([StringType()], VoidType())),
+        Symbol("readInt", MType([], IntType())),
+        Symbol("writeInt", MType([IntType()], VoidType())),
+        Symbol("writeIntLn", MType([IntType()], VoidType())),
+        Symbol("readFloat", MType([], FloatType())),
+        Symbol("writeFloat", MType([FloatType()], VoidType())),
+        Symbol("writeFloatLn", MType([FloatType()], VoidType())),
+        Symbol("readBool", MType([], BoolType())),
+        Symbol("writeBool", MType([BoolType()], VoidType())),
+        Symbol("writeBoolLn", MType([BoolType()], VoidType())),
+        Symbol("readStr", MType([], StringType())),
+        Symbol("writeStr", MType([StringType()], VoidType())),
+        Symbol("writeStrLn", MType([StringType()], VoidType())),
     ]
-            
-    
-    def __init__(self,ast):
+
+    def __init__(self, ast):
         self.ast = ast
-    
+
     def check(self):
         return self.ast.accept(self, StaticChecker.global_envi)
-    
-    def visitProgram(self, ast: Program, c):
-        programEnvi = [{"global": c}]
-        list(map(lambda x: x.accept(self, programEnvi), ast.decl))
 
-    def lookupVar(self, variable, envi):
-        for index, item in enumerate(envi):
-            if item:
-                if index > 0:
-                    if item["name"] == variable:
-                        return True, item["type"], index
-                else:
-                    for x in item["global"]:
-                        if type(x) is not Symbol and x["name"] == variable:
-                            return True, x["type"], index
-        return False, None, None
-    
-    def lookupObj(self, objName, envi):
-        for index, item in enumerate(envi):
-            if item:
-                if index > 0:
-                    if item["name"] == objName:
-                        return True, item["type"], index
-                else:
-                    for x in item["global"]:
-                        if type(x) is not Symbol and x["name"] == objName:
-                            return True, x["type"], index
-        return False, None, None
+    def lookupClass(self, name, envi):
+        for (index, item) in enumerate(envi):
+            if item["class"] == name:
+                return [True, item, index]
+        return [False, None, None]
 
-    def checkType(self, varType, varInit):
-        if varInit == varType:
-            return True, 'Literal'
+    def lookupVarFromGlobal(self, name, envi, child):
+        inMethod = envi[-1]["method"] if "method" in envi[-1] else ""
+        for classItem in enumerate(envi[:-1]):
+            if classItem["class"] == child:
+                if inMethod != "":
+                    for statics_item in enumerate(
+                        classItem["statics"]["methods"]
+                    ):
+                        if statics_item["name"] == name:
+                            return [True, statics_item, "static", classItem["class"]]
+                    for locals_item in enumerate(
+                        classItem["locals"]["methods"]
+                    ):
+                        if locals_item["name"] == name:
+                            return [True, locals_item, "local", classItem["class"]]
+                for statics_item in enumerate(
+                    classItem["statics"]["attrs"]
+                ):
+                    if statics_item["name"] == name:
+                        return [True, statics_item, "static", classItem["class"]]
+                for locals_item in enumerate(classItem["locals"]["attrs"]):
+                    if locals_item["name"] == name:
+                        return [True, locals_item, "local", classItem["class"]]
+            for classItem in enumerate(envi[1:-1]):
+                if classItem["class"] != child:
+                    if inMethod != "":
+                        for statics_item in enumerate(
+                            classItem["statics"]["methods"]
+                        ):
+                            if statics_item["name"] == name:
+                                return [
+                                    True,
+                                    statics_item,
+                                    "static",
+                                    classItem["class"],
+                                    "inherited",
+                                ]
+                        for locals_item in enumerate(classItem["locals"]["methods"]):
+                            if locals_item["name"] == name:
+                                return [True, locals_item, "local", classItem["class"], "inherited"]
+                    for statics_item in enumerate(classItem["statics"]["attrs"]):
+                        if statics_item["name"] == name:
+                            return [True, statics_item, "static", classItem["class"], "inherited"]
+                    for locals_item in enumerate(classItem["locals"]["attrs"]):
+                        if locals_item["name"] == name:
+                            return [True, locals_item, "local", classItem["class"], "inherited"]
+        return [False, None, None]
+
+    def lookupVarFromTail(self, name, envi, child, parent=None):
+        inMethod = envi[-1]["method"] if "method" in envi[-1] else ""
+        for classItem in enumerate(envi[:-1]):
+            if classItem["class"] == child:
+                if inMethod != "":
+                    for statics_item in enumerate(
+                        classItem["statics"]["methods"]
+                    ):
+                        if statics_item["name"] == name:
+                            return [True, statics_item, "static", classItem["class"]]
+                    for locals_item in enumerate(
+                        classItem["locals"]["methods"]
+                    ):
+                        if locals_item["name"] == name:
+                            return [True, locals_item, "local", classItem["class"]]
+                for statics_item in enumerate(
+                    classItem["statics"]["attrs"]
+                ):
+                    if statics_item["name"] == name:
+                        return [True, statics_item, "static", classItem["class"]]
+                for locals_item in enumerate(classItem["locals"]["attrs"]):
+                    if locals_item["name"] == name:
+                        return [True, locals_item, "local", classItem["class"]]
+        if parent != None:
+            stack = parent
+            while len(stack) > 0:
+                for classItem in enumerate(envi[:-1]):
+                    if classItem["class"] == stack[-1]:
+                        if inMethod != "":
+                            for statics_item in enumerate(classItem["statics"]["methods"]):
+                                if statics_item["name"] == name:
+                                    return [True, statics_item, "static", classItem["class"], "inherited"]
+                            for locals_item in enumerate(classItem["locals"]["methods"]):
+                                if locals_item["name"] == name:
+                                    return [True, locals_item, "local", classItem["class"], "inherited"]
+                        for statics_item in enumerate(classItem["statics"]["attrs"]):
+                            if statics_item["name"] == name:
+                                return [True, statics_item, "static", classItem["class"], "inherited"]
+                        for locals_item in enumerate(classItem["locals"]["attrs"]):
+                            if locals_item["name"] == name:
+                                return [True, locals_item, "local", classItem["class"], "inherited"]
+                stack.pop()
+        return [False, None, None]
+
+    def lookupInside(self, name, envi):
+        if "local" in envi[-1]:
+            local = envi[-1]["local"]
+            for i, x in enumerate(local):
+                if name == x["name"]:
+                    return [True, x, "local"]
+        lookup = self.lookupVarFromTail(
+            name, envi, envi[-1]["current"], envi[-1]["inherit"]
+        )
+        if lookup[0]:
+            return lookup
+        return [False, None, None]
+
+    def visitProgram(self, ast, c):
+        envi = [{"class": "io", "statics": {"attrs": [], "methods": c}}]
+        for x in ast.decl:
+            envi += [x.accept(self, envi)]
+
+    def visitVarDecl(self, ast, c):
+        name = ast.variable.accept(self, c)
+        type = ast.varType.accept(self, c)
+        if ast.varInit.__class__.__name__ == "NewExpr":
+            obj = c[-1]
+            obj["varname"] = name
+            obj = c[:-1] + [obj]
+            init = ast.varInit.accept(self, obj)
         else:
-            if varInit not in [IntType(), FloatType(), StringType(), BoolType()]:
-                return False, 'Id_Or_Op'
-        return False, 'Literal'
+            init = ast.varInit.accept(self, c) if ast.varInit else [None, True]
+        return {"type": type, "name": name, "value_type": init[0], "const": False}
 
-    def checkVarDecl(self, ast: VarDecl, c):
-        variable = ast.variable.accept(self, c)
-        varType = ast.varType.accept(self, c)
-        varInit = ast.varInit.accept(self, c) if ast.varInit else [None, True]
-        check = self.checkType(varType, varInit[0])
-        # if not check[0]:
-        #     if check[1] == "Literal":
-        #         print("deo cung type cua literal")
-        #     else:
-        #         print("hinh nhu dung cung may type khac luon")
-        return {
-            "type": varType,
-            "name": variable,
-            "value_type": varInit[0] if varInit != None else varType,
-            "isConst": False,
-        }
-
-    def checkConstDecl(self, ast: ConstDecl, c):
-        constant = ast.constant.accept(self, c)
-        constType = ast.constType.accept(self, c)
-        value = ast.value.accept(self, c) if ast.value else [None, True]
-
+    def visitConstDecl(self, ast, c):
+        name = ast.constant.accept(self, c)
+        type = ast.constType.accept(self, c)
         if ast.value.__class__.__name__ == "Id":
-            lookup = self.lookupVar(ast.value.accept(self, c), c)
+            lookup = self.lookupVarFromTail(
+                ast.value.accept(self, c), c, c[-1]["current"], c[-1]["inherit"]
+            )
             if lookup[0]:
-                if not c[lookup[0]["isConst"]]:
+                if not lookup[1]["const"]:
                     raise IllegalConstantExpression(ast.value)
             else:
                 raise IllegalConstantExpression(ast.value)
-        check = self.checkType(constType, value[0])
-        if not value[1]:
+        init = ast.value.accept(self, c) if ast.value else [None, True]
+        if init[0] == None or (len(init) == 3 and init[2] == None):
             raise IllegalConstantExpression(ast.value)
-        if not check[0]:
-            if check[1] == "Literal":
-                raise TypeMismatchInConstant(ast)
+        else:
+            if init[0] in ["int", "bool", "float", "string"]:
+                if not init[1]:
+                    raise IllegalConstantExpression(ast.value)
+                else:
+                    if init[0] != type:
+                        raise TypeMismatchInConstant(ast)
             else:
-                raise IllegalConstantExpression(ast.value)
-        return {"type": constType, "name": constant, "value_type": value[0], "isConst": True}
-    
-    def visitVarDecl(self, ast: VarDecl, c):
-        variable = ast.variable.accept(self, c)
+                raise TypeMismatchInConstant(ast)
+        return {"type": type, "name": name, "value_type": init[0], "const": True}
 
-        if not self.lookupVar(variable, c)[0]:
-            return self.checkVarDecl(ast, c)
-        else:
-            raise Redeclared(Variable(), variable)
-    
-    def visitConstDecl(self, ast: ConstDecl, c):
-        constant = ast.constant.accept(self, c)
-
-        if not self.lookupVar(constant, c)[0]:
-            return self.checkConstDecl(ast, c)
-        else:
-            raise Redeclared(Constant(), constant)
-
-    def lookupClass(self, classname, envi):
-        if len(envi) > 1:
-            for index, element in enumerate(envi):
-                if index > 0 and element:
-                    if element["class"] == classname:
-                        return True, index
-        return False, None
-    
-    def referenceClass(self, classname, parentname, envi):
-        foundChild = self.lookupClass(classname, envi)
-        foundParent = self.lookupClass(parentname, envi)
-        if foundChild[0]:
+    def visitClassDecl(self, ast, c):
+        classname = ast.classname.accept(self, c)
+        parentname = ast.parentname.accept(self, c) if ast.parentname else ""
+        if self.lookupClass(classname, c)[0]:
             raise Redeclared(Class(), classname)
-        if parentname != None:
-            if not foundParent[0]:
+        local = {
+            "class": classname,
+            "statics": {"attrs": [], "methods": []},
+            "locals": {"attrs": [], "methods": []},
+            "inherit": [],
+        }
+        if parentname != "":
+            lookupClass = self.lookupClass(parentname, c)
+            if not lookupClass[0]:
                 raise Undeclared(Class(), parentname)
             else:
-                return envi[foundParent[1]]["local"]
-        return []
-    
-    def visitClassDecl(self, ast: ClassDecl, c):
-        localVar = [c[0]]
-        classname = ast.classname.accept(self, c)
-        parentname = ast.parentname.accept(self, c) if ast.parentname else None
-        localVar += self.referenceClass(classname, parentname, c)
-        memDecl = []
+                local["inherit"] = lookupClass[1]["inherit"]
+        attr = []
         for mem in ast.memlist:
             if mem.__class__.__name__ == "AttributeDecl":
-                name = mem.decl.variable.name if (self.getClass(mem.decl) == "VarDecl") else mem.decl.constant.name
-                if name not in memDecl:
-                    if mem.kind.accept(self, c) == "Instance":
-                        member = mem.accept(self, localVar)
-                        if member != None:
-                            member.update({"class": classname})
-                            localVar.append(member)
+                name = (mem.decl.variable.name if (mem.decl.__class__.__name__ == "VarDecl") else mem.decl.constant.name)
+                if name not in attr:
+                    obj = (c + [local] + [{"current": classname, "inherit": local["inherit"] + ([parentname] if parentname else [])}])
+                    if mem.kind.accept(self, local) == "Instance":
+                        member = mem.accept(self, obj)
+                        local["locals"]["attrs"].append(member)
                     else:
-                        member = mem.accept(self, localVar)
-                        # member.update({"class": nameclass})
-                        localVar[0]["global"].append(member)
-                        c[0]["global"] = localVar[0]["global"]
-                    memDecl.append(name)
+                        member = mem.accept(self, obj)
+                        local["statics"]["attrs"].append(member)
                 else:
                     raise Redeclared(Attribute(), name)
-        for mem in ast.memlist:
-            if mem.__class__.__name__ == "MethodDecl":
-                mem.accept(self, localVar)
-
-        c[0].update({"class": classname})
-        c.append({"class": classname, "local": localVar[1:]})
-    
-    def visitStatic(self, ast: Static, c):
-        return "static"
-    
-    def visitInstance(self, ast: Instance, c):
-        return "instance"
-    
-    def visitMethodDecl(self, ast: MethodDecl, c):
-        kind = ast.kind.accept(self, c)
-        name = ast.name.accept(self, c)
-        param = ast.param
-        returnType = ast.returnType.accept(self, c)
-        body = ast.body.accept(self, c)
-
-        return list(map(lambda x: x.accept(self, c), ast.body.stmt))
-        #raise Redeclared(Method(), str(name))
-    
-    def visitAttributeDecl(self, ast: AttributeDecl, c):
-        kind = ast.kind.accept(self, c)
-        decl = ast.decl.accept(self, c)
-        attributeName = (ast.decl.variable.name if (ast.decl.__class__.__name__ == "VarDecl") else ast.decl.constant.name)
-
-        lookup = self.lookupVar(attributeName, c)
-        if lookup[0]:
-            if lookup[2] > 0:
-                if ast.decl.__class__.__name__ == "VarDecl":
-                    check = self.checkVarDecl(ast.decl, c)
+            else:
+                name = mem.name.accept(self, c)
+                if name not in attr:
+                    obj = (c + [local] + [{"current": classname,"inherit": local["inherit"] + ([parentname] if parentname else [])}])
+                    if mem.kind.accept(self, local) == "Instance":
+                        member = mem.accept(self, obj)
+                        local["locals"]["methods"].append(member)
+                    else:
+                        member = mem.accept(self, obj)
+                        local["statics"]["methods"].append(member)
                 else:
-                    check = self.checkConstDecl(ast.decl, c)
-                c[lookup[2]] = check
+                    raise Redeclared(Method(), name)
+            attr.append(name)
+        if parentname:
+            local["inherit"].append(parentname)
+        return local
+
+    def visitStatic(self, ast, c):
+        return "Static"
+
+    def visitInstance(self, ast, c):
+        return "Instance"
+
+    def visitMethodDecl(self, ast, c):
+        forStack = Stack()
+        params = []
+        if len(ast.param) > 0:
+            for param in ast.param:
+                name = param.variable.name
+                names = [x["name"] for x in params]
+                if name not in names:
+                    member = param.accept(self, c)
+                else:
+                    raise Redeclared(Parameter(), name)
+                params.append(member)
+        obj = c[-1]
+        kind = ast.kind.accept(self, c)
+        obj["static"] = True if kind == "Static" else False
+        obj["method"] = ast.name.accept(self, c)
+        obj["param"] = params
+        obj["return_type"] = ast.returnType.accept(self, c)
+        obj["stack"] = forStack
+        obj = c[:-1] + [obj]
+        body = ast.body.accept(self, obj)
+        return {
+            "type": ast.returnType.accept(self, c),
+            "name": ast.name.accept(self, c),
+            "param": params,
+            "body": body,
+        }
+
+    def visitAttributeDecl(self, ast, c):
+        name = (
+            ast.decl.variable.name
+            if (ast.decl.__class__.__name__ == "VarDecl")
+            else ast.decl.constant.name
+        )
+        return ast.decl.accept(self, c)
+
+    def visitIntType(self, ast, c):
+        return "int"
+
+    def visitFloatType(self, ast, c):
+        return "float"
+
+    def visitBoolType(self, ast, c):
+        return "bool"
+
+    def visitStringType(self, ast, c):
+        return "string"
+
+    def visitVoidType(self, ast, c):
+        return "void"
+
+    def visitArrayType(self, ast, c):
+        return {"array": ast.eleType.accept(self, c), "size": ast.size}
+
+    def visitClassType(self, ast, c):
+        return {"class": ast.classname.name}
+
+    def visitBinaryOp(self, ast, c):
+        primitive = [
+            "IntLiteral",
+            "FloatLiteral",
+            "BoolLiteral",
+            "StringLiteral",
+        ]
+        ops = ["BinaryOp", "UnaryOp"]
+        isStatic = True
+        left = ast.left.__class__.__name__
+        right = ast.right.__class__.__name__
+        checkId = {"left": "", "right": ""}
+        op = ast.op
+        if left not in primitive + ops or right not in primitive + ops:
+            if left == "Id":
+                res = self.lookupInside(ast.left.accept(self, c), c)
+                checkId["left"] = res
+                if res[0]:
+                    if not res[1]["const"]:
+                        isStatic = False
+                else:
+                    raise Undeclared(Identifier(), ast.left.accept(self, c))
+            if right == "Id":
+                res = self.lookupInside(ast.right.accept(self, c), c)
+                checkId["right"] = res
+                if res[0]:
+                    if not res[1]["const"]:
+                        isStatic = False
+                else:
+                    raise Undeclared(Identifier(), ast.right.accept(self, c))
+        left = (
+            ast.left.accept(self, c)
+            if checkId["left"] == ""
+            else [
+                checkId["left"][1]["type"]
+                if not isinstance(checkId["left"][1]["type"], dict)
+                else checkId["left"][1]["type"]["class"]
+                if "class" in checkId["left"][1]["type"]
+                else checkId["left"][1]["type"]["array"],
+                checkId["left"][1]["const"],
+            ]
+        )
+        right = (
+            ast.right.accept(self, c)
+            if checkId["right"] == ""
+            else [
+                checkId["right"][1]["type"]
+                if not isinstance(checkId["right"][1]["type"], dict)
+                else checkId["right"][1]["type"]["class"]
+                if "class" in checkId["right"][1]["type"]
+                else checkId["right"][1]["type"]["array"],
+                checkId["right"][1]["const"],
+            ]
+        )
+
+        if not left[1]:
+            isStatic = False
+        if not right[1]:
+            isStatic = False
+        if op in ["&&", "||"] and left[0] in ["bool"] and right[0] in ["bool"]:
+            return ["bool", isStatic]
+        elif (op in ["==", "!="] and left[0] in ["bool", "int"] and right[0] in ["bool", "int"]):
+            return ["bool", isStatic]
+        elif (op in ["+", "-", "*", "<", "<=", ">", ">="] and left[0] in ["float", "int"] and right[0] in ["float", "int"]):
+            if left[0] == "int" and right[0] == "int":
+                return ["int", isStatic]
             else:
-                raise Redeclared(Attribute(), attributeName)
+                return ["float", isStatic]
+        elif (op in ["/"] and left[0] in ["float", "int"] and right[0] in ["float", "int"]):
+            return ["float", isStatic]
+        elif op in ["\\", "%"] and left[0] == "int" and right[0] == "int":
+            return ["int", isStatic]
+        elif op in ["^"] and left[0] == "string" and right[0] == "string":
+            return ["string", isStatic]
         else:
-            return decl
-    
-    def visitIntType(self, ast: IntType, c):
-        return IntType()
-    
-    def visitFloatType(self, ast: FloatType, c):
-        return FloatType()
-    
-    def visitBoolType(self, ast: BoolType, c):
-        return BoolType()
-    
-    def visitStringType(self, ast: StringType, c):
-        return StringType()
-    
-    def visitVoidType(self, ast: VoidType, c):
-        return VoidType()
-    
-    def visitArrayType(self, ast: ArrayType, c):
-        return ArrayType()
-    
-    def visitClassType(self, ast: ClassType, c):
-        return ClassType()
-    
-    def visitBinaryOp(self, ast: BinaryOp, c):
-        pass
-    
-    def visitUnaryOp(self, ast: UnaryOp, c):
-        pass
-    
-    def visitCallExpr(self, ast: CallExpr, c): 
-        at = [self.visit(x,(c[0],False)) for x in ast.c]
-        res = self.lookup(ast.method.name,c[0],lambda x: x.name)
-        if res is None or not type(res.mtype) is MType:
-            raise Undeclared(CallExpr(),ast.method.name)
-        elif len(res.mtype.partype) != len(at):
-            if c[1]:
-                raise TypeMismatchInStatement(ast)
-            else:
-                raise TypeMismatchInExpression(ast)
+            raise TypeMismatchInExpression(ast)
+
+    def visitUnaryOp(self, ast, c):
+        primitive = ["IntLiteral","FloatLiteral","BoolLiteral","StringLiteral",]
+        ops = ["BinaryOp", "UnaryOp"]
+        isStatic = True
+        checkId = {"body": ""}
+        op = ast.op
+        body = ast.body.__class__.__name__
+        if body not in primitive + ops:
+            if body == "Id":
+                res = self.lookupInside(ast.body.accept(self, c), c)
+                checkId["body"] = res
+                if res[0]:
+                    if not res[1]["const"]:
+                        isStatic = False
+                else:
+                    raise Undeclared(Identifier(), ast.body.accept(self, c))
+        body = (
+            ast.body.accept(self, c)
+            if checkId["body"] == ""
+            else [
+                checkId["body"][1]["type"]
+                if not isinstance(checkId["body"][1]["type"], dict)
+                else checkId["body"][1]["type"]["class"]
+                if "class" in checkId["body"][1]["type"]
+                else checkId["body"][1]["type"]["array"],
+                checkId["body"][1]["const"],
+            ]
+        )
+
+        if not body[1]:
+            isStatic = False
+        body = ast.body.accept(self, c)
+        if op in ["+", "-"] and body[0] in ["int"]:
+            return ["int", isStatic]
+        elif op in ["+", "-"] and body[0] in ["float"]:
+            return ["float", isStatic]
+        elif op in ["!"] and body[0] in ["bool"]:
+            return ["bool", isStatic]
         else:
-            return res.mtype.rettype
-    
-    def visitNewExpr(self, ast: NewExpr, c):
+            raise TypeMismatchInExpression(ast)
+
+    def visitCallExpr(self, ast, c):
         pass
-    
-    def visitId(self, ast: Id, c):
+
+    def visitNewExpr(self, ast, c):
+        findclass = self.lookupClass(ast.classname.name, c)
+        name = c[-1]["method"] if "method" in c[-1] else c[-1]["varname"]
+        statics = findclass[1]["statics"]
+        locals = [findclass[1]["locals"]]
+        if findclass[0]:
+            return [{
+                    "type": {"class": ast.classname.name},
+                    "name": name,
+                    "value_type": {"statics": statics, "locals": locals},
+                    "const": False,
+                }, False,]
+        raise Undeclared(Class(), ast.classname.name)
+
+    def visitId(self, ast, c):
         return ast.name
-    
-    def visitArrayCell(self, ast: ArrayCell, c):
-        pass
-    
-    def visitFieldAccess(self, ast: FieldAccess, c):
-        lookup = self.lookupClass(ast.obj.accept(self, c), c)
-        if lookup[0]:
-            lookupVar = self.lookupVar(
-                ast.fieldname.accept(self, c), c[lookup[1]]
-            )
-            if lookupVar[0]:
-                return lookupVar[1], False
+
+    def visitArrayCell(self, ast, c):
+        arr = ast.arr.accept(self, c)
+        idx = ast.idx.accept(self, c)
+        findArrayType = self.lookupInside(arr, c)
+        if "array" not in findArrayType[1]["type"] or idx[0] != "int":
+            raise TypeMismatchInExpression(ast)
         else:
-            lookupobj = self.lookupVar(
-                ast.fieldname.accept(self, c), c[lookup[1]]
-            )
-    
-    def visitBlock(self, ast: Block, c):
-        tempStack = Stack()
+            return [findArrayType[1]["type"]["array"], False]
+
+    def visitFieldAccess(self, ast, c):
+        findField = self.lookupVarFromGlobal(
+            ast.fieldname.accept(self, c), c, c[-1]["current"]
+        )
+        if findField[0]:
+            if findField[2] == "static":
+                if ast.obj.__class__.__name__ == "Id":
+                    classname = ast.obj.accept(self, c)
+                    findObj = self.lookupVarFromTail(
+                        ast.obj.accept(self, c), c, c[-1]["current"], c[-1]["inherit"]
+                    )
+                    if classname == findField[3]:
+                        return [
+                            findField[1]["type"],
+                            findField[1]["const"],
+                            findField[1]["value_type"],
+                        ]
+                    else:
+                        raise Undeclared(Class(), classname)
+                else:
+                    raise TypeMismatchInExpression(ast)
+            else:
+                objname = ast.obj.accept(self, c)
+                if objname[0] == "self":
+                    thisclass = self.lookupClass(c[-1]["current"], c)
+                    if findField[3] != thisclass[1]["class"]:
+                        raise Undeclared(Attribute(), ast.fieldname.accept(self, c))
+                else:
+                    findObj = self.lookupVarFromTail(ast.obj.accept(self, c), c, c[-1]["current"], c[-1]["inherit"])
+                    if findObj[0]:
+                        if ast.obj.__class__.__name__ == "Id":
+                            if not ("class" in findObj[1]["type"]):
+                                raise TypeMismatchInExpression(ast)
+                            else:
+                                lookclass = self.lookupClass(findObj[3], c)
+                                if findObj[3] in ([c[-1]["current"]] + lookclass[1]["inherit"]):
+                                    return [findField[1]["type"],findField[1]["const"],findField[1]["value_type"]]
+                                else:
+                                    raise Undeclared(Attribute(), ast.fieldname.accept(self, c))
+                        else:
+                            raise TypeMismatchInExpression(ast)
+        else:
+            raise Undeclared(Attribute(), ast.fieldname.accept(self, c))
+
+    def visitBlock(self, ast, c):
+        locals = c[-1]["param"]
         for decl in ast.decl:
-            decl.accept(self, c)
+            name = decl.variable.name
+            names = [x["name"] for x in locals]
+            if name not in names:
+                member = decl.accept(self, c)
+            else:
+                raise Redeclared(Variable(), name)
+            locals.append(member)
+        c[-1]["local"] = locals
+        stmts = []
         for stmt in ast.stmt:
             if stmt.__class__.__name__ == "For":
-                tempStack.push(stmt)
+                c[-1]["stack"].push(stmt)
             if stmt.__class__.__name__ in ["Continue", "Break"]:
-                res = tempStack.pop()
+                res = c[-1]["stack"].pop()
                 if not res:
                     raise MustInLoop(stmt)
-            stmt.accept(self, c)
-    
-    def visitIf(self, ast: If, c):
-        pass
-    
-    def visitFor(self, ast: For, c):
-        pass
-    
-    def visitContinue(self, ast: Continue, c):
-        return (ast, Continue())
-        # raise MustInLoop(Continue())
-    
-    def visitBreak(self, ast: Break, c):
-        return (ast, Break())
-        # raise MustInLoop(Break())
-    
-    def visitReturn(self, ast: Return, c):
-        pass
-    
-    def visitAssign(self, ast: Assign, c):
-        pass
-    
-    def visitCallStmt(self, ast: CallStmt, c):
-        pass
-    
-    def visitIntLiteral(self, ast: IntLiteral, c):
-        return IntType()
-    
-    def visitFloatLiteral(self, ast: FloatLiteral, c):
-        return FloatType()
-    
-    def visitBooleanLiteral(self, ast: BooleanLiteral, c):
-        return BoolType()
-    
-    def visitStringLiteral(self, ast: StringLiteral, c):
-        return StringType()
-    
-    def visitNullLiteral(self, ast: NullLiteral, c):
-        return NullLiteral()
-    
-    def visitSelfLiteral(self, ast: SelfLiteral, c):
-        return SelfLiteral()
+            stmts += [stmt.accept(self, c)]
+        return {"locals": locals, "stmts": stmts}
 
-    def checkTypeArrayLiteral(self, arr, envi):
-        list = [x.accept(self, envi) for x in arr]
-        res = all(map(lambda x: x == list[0], list))
-        return res, list[0]
+    def visitIf(self, ast, c):
+        exp = ast.expr.accept(self, c)
+        if exp[0] != "bool":
+            raise TypeMismatchInStatement(ast)
+        thenStmt = ast.thenStmt.accept(self, c)
+        elseStmt = None if not ast.elseStmt else ast.elseStmt.accept(self)
+        return {"type": "stmt", "usage": "if", "then": thenStmt, "else": elseStmt}
 
-    def visitArrayLiteral(self, ast: ArrayLiteral, c):
-        res = self.checkTypeArrayLiteral(ast.value, c)
-        if (not res[0]):
+    def visitFor(self, ast, c):
+        id = ast.id.accept(self, c)
+        foundId = self.lookupInside(id, c)
+        if foundId[0]:
+            if foundId[1]["type"] != "int":
+                raise TypeMismatchInStatement(ast)
+        else:
+            raise Undeclared(Identifier(), id)
+        expr1 = ast.expr1.accept(self, c)
+        if expr1[0] != "int":
+            raise TypeMismatchInStatement(ast)
+        expr2 = ast.expr2.accept(self, c)
+        if expr2[0] != "int":
+            raise TypeMismatchInStatement(ast)
+        return {"type": "stmt", "usage": "for", "up": ast.up, "loop": ast.loop.accept(self, c)}
+
+    def visitContinue(self, ast, c):
+        pass
+
+    def visitBreak(self, ast, c):
+        pass
+
+    def visitReturn(self, ast, c):
+        exp = ast.expr.accept(self, c)
+        if exp[0] != c[-1]["return_type"]:
+            raise TypeMismatchInStatement(ast)
+
+    def visitAssign(self, ast, c):
+        pass
+
+    def visitCallStmt(self, ast, c):
+        pass
+
+    def visitIntLiteral(self, ast, c):
+        return ["int", True]
+
+    def visitFloatLiteral(self, ast, c):
+        return ["float", True]
+
+    def visitBooleanLiteral(self, ast, c):
+        return ["bool", True]
+
+    def visitStringLiteral(self, ast, c):
+        return ["string", True]
+
+    def visitNullLiteral(self, ast, c):
+        return ["null", True]
+
+    def visitSelfLiteral(self, ast, c):
+        return {"class": c[-1]["current"]}
+
+    def visitArrayLiteral(self, ast, c):
+        list = [x.accept(self, c) for x in ast.value]
+        res = all(map(lambda x: x[0] == list[0][0] and x[1] == True, list))
+        if not res:
             raise IllegalArrayLiteral(ast)
-        return res[1]
+        return [list[0][0], False]
